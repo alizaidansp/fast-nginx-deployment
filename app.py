@@ -1,28 +1,22 @@
-#!/usr/bin/env python3
-import os
-
 import aws_cdk as cdk
-
-from 3_catalog_server.3_catalog_server_stack import 3CatalogServerStack
-
+from aws_cdk import Environment
+from catalog_server.vpc_stack import CatalogVPC
+from catalog_server.sg_stack import SecurityGroupStack
+from catalog_server.ec2_stack import EC2Stack
 
 app = cdk.App()
-3CatalogServerStack(app, "3CatalogServerStack",
-    # If you don't specify 'env', this stack will be environment-agnostic.
-    # Account/Region-dependent features and context lookups will not work,
-    # but a single synthesized template can be deployed anywhere.
 
-    # Uncomment the next line to specialize this stack for the AWS Account
-    # and Region that are implied by the current CLI configuration.
 
-    #env=cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=os.getenv('CDK_DEFAULT_REGION')),
+# Instantiate stacks with correct environment
+vpc_stack = CatalogVPC(app, "CatalogVPC")
 
-    # Uncomment the next line if you know exactly what Account and Region you
-    # want to deploy the stack to. */
+# Pass VPC from vpc_stack to SecurityGroupStack
+sg_stack = SecurityGroupStack(app, "SecurityGroupStack", vpc=vpc_stack.vpc)
 
-    #env=cdk.Environment(account='123456789012', region='us-east-1'),
+# Pass both VPC and Security Group to EC2Stack
+EC2Stack(app, "EC2Stack", vpc=vpc_stack.vpc, sg=sg_stack.sg)
 
-    # For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html
-    )
-
+# Synthesize CloudFormation
 app.synth()
+
+# cdk destroy CatalogVPC SecurityGroupStack EC2Stack && cdk deploy CatalogVPC && cdk deploy SecurityGroupStack && cdk deploy EC2Stack

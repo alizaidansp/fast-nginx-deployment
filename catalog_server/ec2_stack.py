@@ -1,7 +1,6 @@
-from aws_cdk import Stack, aws_ec2 as ec2, CfnOutput
+from aws_cdk import Stack, aws_ec2 as ec2, CfnOutput, aws_iam as iam
 from constructs import Construct
 from aws_cdk import Stack
-import os
 
 # In ec2_stack.py __init__ method
 # current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -19,6 +18,18 @@ class EC2Stack(Stack):
         user_data = ec2.UserData.for_linux()
         user_data.add_commands(user_data_script)
 
+          # Create an IAM Role with SSM Access
+        ec2_role = iam.Role(
+            self, "CatalogEC2Role",
+            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com")
+        )
+
+        # Add permission to access SSM Parameter Store
+        ec2_role.add_to_policy(iam.PolicyStatement(
+            actions=["ssm:GetParameter", "ssm:GetParameters"],
+            resources=["arn:aws:ssm:eu-west-1:183631301567:parameter/github/creds"]
+        ))
+
         instance = ec2.Instance(
             self, "CatalogEC2",
             instance_type=ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.MICRO),
@@ -28,7 +39,8 @@ class EC2Stack(Stack):
             vpc=vpc,
             security_group=sg,
             key_name="LabKP",
-            user_data=user_data
+            user_data=user_data,
+            role=ec2_role  
         )
 
         CfnOutput(self, "EC2PublicIP", value=instance.instance_public_ip)

@@ -1,5 +1,4 @@
 import aws_cdk as cdk
-from aws_cdk import Environment
 from catalog_server.vpc_stack import CatalogVPC
 from catalog_server.sg_stack import SecurityGroupStack
 from catalog_server.ec2_stack import EC2Stack

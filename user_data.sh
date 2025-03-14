@@ -1,63 +1,46 @@
 #!/bin/bash
+set -e  # Exit on error
+
 # Update system and install dependencies
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y nginx python3 python3-pip python3-venv sqlite3
+sudo apt install -y nginx python3 python3-pip python3-venv sqlite3 git
+# Install unzip used to install aws cli
+sudo apt install -y unzip
 
-# Set up application directory
-mkdir -p /home/ubuntu/catalog_server
+# Download and install AWS CLI (version 2)
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
 
-# Dynamically write app.py
-# EOF => End Of File(specifying beginning and end of file)
-# << => Here doc operator specifying 
-cat << 'EOF' > /home/ubuntu/catalog_server/app.py
-from flask import Flask, jsonify
-from flask_sqlalchemy import SQLAlchemy
+# Verify the installation
+aws --version
 
-app = Flask(__name__)
+# Fetch GitHub credentials from AWS Secrets Manager
+creds=$(aws ssm get-parameter --name "/github/creds" --with-decryption --region eu-west-1 --query "Parameter.Value" --output text)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////home/ubuntu/catalog_server/catalog.db'
+GITHUB_USERNAME=$(echo $creds | jq -r .GITHUB_USERNAME)
+GITHUB_TOKEN=$(echo $creds | jq -r .GITHUB_TOKEN)
 
+REPO_URL="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/alizaidansp/flask-app.git"
+# Clone the private repo and rename it
+mkdir -p /home/ubuntu
+cd /home/ubuntu
+git clone $REPO_URL
+mv flask-app catalog_server
 
-db = SQLAlchemy(app)
+# Set permissions
+# chown -R ubuntu:ubuntu /home/ubuntu/catalog_server
 
-class Products(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), nullable=False)
-    description = db.Column(db.String(200))
-    price = db.Column(db.Float, nullable=False)
+# Set up the Flask app
+cd catalog_server
 
-@app.route('/products', methods=['GET'])
-def get_products():
-    products = Products.query.all()
-    return jsonify([{
-        'id': p.id,
-        'name': p.name,
-        'description': p.description,
-        'price': p.price
-    } for p in products])
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
-EOF
-
-# Set up Python virtual environment and Flask app
-cd /home/ubuntu/catalog_server
+# Set up Python virtual environment
 python3 -m venv venv
 source venv/bin/activate
-pip install flask flask_sqlalchemy
+pip install -r requirements.txt || pip install flask flask_sqlalchemy
 
-# Initialize the SQLite database
-sqlite3 catalog.db <<EOF
-CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    price REAL NOT NULL
-);
-INSERT INTO products (name, description, price) VALUES
-('Laptop', 'A high-end laptop', 1200.00),
-('Phone', 'Latest smartphone', 800.00);
-EOF
+# Execute the database creation script
+bash exec_db.sh
 
 # Set up Flask systemd service
 cat <<EOT | sudo tee /etc/systemd/system/catalog.service
@@ -80,20 +63,20 @@ sudo systemctl enable catalog
 sudo systemctl start catalog
 
 # Set up Nginx reverse proxy
-sudo rm /etc/nginx/sites-enabled/default
+sudo rm -f /etc/nginx/sites-enabled/default
 cat <<EOT | sudo tee /etc/nginx/sites-available/catalog
 server {
     listen 80;
     server_name _;
 
-    location / {
+    location /api/v1/ {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 }
-EOT
+EOTn
 
 sudo ln -s /etc/nginx/sites-available/catalog /etc/nginx/sites-enabled/
 sudo nginx -t

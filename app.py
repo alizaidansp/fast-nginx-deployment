@@ -18,4 +18,8 @@ EC2Stack(app, "EC2Stack", vpc=vpc_stack.vpc, sg=sg_stack.sg)
 # Synthesize CloudFormation
 app.synth()
 
+
+# dependent on this
+# flask_app
+# catalog_frontend
 # cdk destroy CatalogVPC SecurityGroupStack EC2Stack && cdk deploy CatalogVPC && cdk deploy SecurityGroupStack && cdk deploy EC2Stack

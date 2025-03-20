@@ -5,13 +5,24 @@ set -e  # Exit on error
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y nginx python3 python3-pip python3-venv sqlite3 git unzip curl jq
 
-# Install AWS CLI (version 2)
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install
+# Check if AWS CLI is installed
+if ! command -v aws &> /dev/null; then
+    echo "AWS CLI not found. Installing..."
 
-# Verify AWS CLI installation
-aws --version
+    # Download and install AWS CLI (version 2)
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+
+    # Clean up
+    rm -rf awscliv2.zip aws
+
+    # Verify installation
+    aws --version
+else
+    echo "AWS CLI is already installed: $(aws --version)"
+fi
+
 
 # Fetch GitHub credentials from AWS SSM Parameter Store
 creds=$(aws ssm get-parameter --name "/github/creds" --with-decryption --region eu-west-1 --query "Parameter.Value" --output text)
@@ -94,8 +105,8 @@ WantedBy=multi-user.target
 EOT
 
 sudo systemctl daemon-reload
-sudo systemctl enable catalog
-sudo systemctl start catalog
+sudo systemctl enable sveltekit
+sudo systemctl start sveltekit
 
 # Set permissions for Nginx
 sudo chown -R www-data:www-data /home/ubuntu/catalog_frontend/build
@@ -125,15 +136,15 @@ server {
       # SvelteKit SSR handler
     location / {
         proxy_pass http://127.0.0.1:3000;  # Ensure your SvelteKit app >
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 
 }
 EOT
 
 # Apply the Nginx configuration
-sudo ln -s /etc/nginx/sites-available/catalog /etc/nginxcd/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/catalog /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl restart nginx
